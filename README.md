@@ -19,7 +19,7 @@ One-click to add, load, share, and discover skills across agents.
 | **Bubble** | Visual representation of a skill — size = usage count |
 | **Loaded** | Skill is active; agents can discover it via the manifest |
 | **Registry** | Local SQLite DB tracking all skills and their usage |
-| **Hub** | GitHub Gist-based sharing — one URL per skill |
+| **Hub** | GitHub repo with `index.json` — browse & install skills via `sb hub add <url>` |
 
 ---
 
@@ -112,22 +112,160 @@ The first non-heading line of `SKILL.md` or `README.md` is used as the descripti
 
 ## Agent Integration
 
-When a skill is loaded, it's written to:
+### 快速接入（新 agent 视角）
+
+任意一个 agent 拿到你的 GitHub repo URL，就能浏览、安装、激活技能，无需运行任何本地服务。
+
+#### 第一步：注册 hub
+
+```bash
+# 用你的 GitHub 仓库地址注册为技能仓库
+sb hub add https://github.com/clveryang/Skill-Bubble
+
+# 也可以指定别名
+sb hub add https://github.com/clveryang/Skill-Bubble --name my-hub
+```
+
+**前提**：仓库根目录需要有 `index.json`（通过 `sb export && git push` 生成，详见下方）。
+
+#### 第二步：查看可下载的技能
+
+```bash
+# 浏览所有已注册 hub 上的技能
+sb browse
+
+# 只看某个 hub
+sb browse --hub my-hub
+
+# 按标签过滤
+sb browse --tag search
+
+# 输出原始 JSON（方便 agent 解析）
+sb browse --json
+```
+
+#### 第三步：安装技能
+
+```bash
+# 从 hub 安装（下载到 ~/skills/<name>/）
+sb install web-search
+
+# 安装后立即激活
+sb install web-search --load
+```
+
+#### 第四步：激活 / 查看已加载的技能
+
+```bash
+# 激活一个技能（写入 ~/.claude/CLAUDE.md，下次 Claude Code 启动自动注入）
+sb load web-search
+
+# 查看当前已激活的技能
+sb ls --loaded
+```
+
+`sb load` 会做两件事：
+1. 把技能路径写入 `~/.skill-bubble/loaded.json`（供 agent 启动时读取）
+2. 把技能的 `SKILL.md` 内容注入 `~/.claude/CLAUDE.md` 的 managed 区块，使其进入 Claude Code 的 system prompt
 
 ```
-~/.skill-bubble/loaded.json
+~/.claude/CLAUDE.md（自动维护区块）:
+
+<!-- skill-bubble-managed-start -->
+## Active Skills (managed by skill-bubble)
+
+<!-- skill: web-search -->
+[SKILL.md 内容]
+<!-- /skill: web-search -->
+<!-- skill-bubble-managed-end -->
 ```
+
+#### 第五步：卸载技能
+
+```bash
+# 停用一个技能（从 CLAUDE.md 和 loaded.json 中移除）
+sb unload web-search
+
+# 彻底删除注册记录
+sb remove web-search
+```
+
+卸载后，若 managed 区块为空，`~/.claude/CLAUDE.md` 中的整个区块会自动清除。
+
+#### 第六步：上传本地技能到 hub
+
+```bash
+# 先保存 GitHub token（只需设置一次）
+sb token ghp_xxxxxxxxxxxx
+
+# 把本地技能发布到指定 hub（通过 GitHub Contents API 写入）
+sb publish my-skill --to my-hub
+
+# 发布后更新 hub 的 index.json（让其他 agent 能发现新技能）
+sb export
+git add index.json web/
+git commit -m "chore: publish my-skill"
+git push
+```
+
+---
+
+### 完整流程示意
+
+```
+[新 agent]
+    │
+    ├─ sb hub add https://github.com/clveryang/Skill-Bubble
+    ├─ sb browse                    # 看有哪些技能
+    ├─ sb install web-search        # 下载到本地
+    ├─ sb load web-search           # 激活 → 注入 CLAUDE.md
+    │
+    └─ (重启 Claude Code)           # system prompt 自动包含 web-search 说明
+
+[想分享自己技能的 agent]
+    │
+    ├─ sb add ./my-awesome-skill    # 注册本地技能
+    ├─ sb publish my-awesome-skill --to my-hub   # 上传到 hub
+    └─ sb export && git push        # 更新 index.json 让别人能发现
+```
+
+---
+
+### Hub 的 index.json 格式
+
+`sb export` 会在仓库根目录生成 `index.json`，任何 agent 都能直接读取：
 
 ```json
 {
+  "hub_name": "Skill-Bubble",
+  "updated_at": "2026-01-01T00:00:00+00:00",
   "skills": [
-    { "name": "web-search", "path": "/Users/me/skills/web-search" },
-    { "name": "code-review", "path": "/Users/me/skills/code-review" }
+    {
+      "name": "web-search",
+      "description": "Search the web using DuckDuckGo",
+      "tags": ["search", "web"],
+      "path": "skills/web-search",
+      "usage_count": 42
+    }
   ]
 }
 ```
 
-Agents read this manifest at startup to discover available skills.
+---
+
+### 底层数据位置
+
+```
+~/.skill-bubble/
+  registry.db     # SQLite — 技能元数据、使用次数
+  loaded.json     # 当前激活的技能列表（agent 启动时读取）
+  config.json     # 配置（GitHub token 等）
+
+~/.claude/
+  CLAUDE.md       # Claude Code system prompt — skill-bubble 自动维护 managed 区块
+```
+
+---
 
 ### Programmatic usage (Python)
 
@@ -155,10 +293,11 @@ bubbles = registry.bubble_data()
 
 ```bash
 # 1. Export your current skill registry to a static snapshot
+#    (also generates index.json for hub discovery)
 sb export
 
-# 2. Push to GitHub — visualization updates automatically
-git add web/data.json
+# 2. Push to GitHub — visualization and hub catalog update automatically
+git add web/ index.json
 git commit -m "chore: update skill snapshot"
 git push
 ```

@@ -1,0 +1,16 @@
+{
+  "hub_name": "Skill-Bubble",
+  "updated_at": "2026-03-14T14:05:03.806895+00:00",
+  "skills": [
+    {
+      "name": "skill-bubble",
+      "description": "Local skill manager REST API",
+      "tags": [
+        "meta",
+        "management"
+      ],
+      "path": "skills/skill-bubble",
+      "usage_count": 1
+    }
+  ]
+}

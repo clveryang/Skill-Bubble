@@ -326,14 +326,35 @@ def cmd_export(out, svg_out):
     svg_path.write_text(svg_content)
     console.print(f"[green]✓[/green] bubbles.svg → [bold]{svg_path}[/bold]")
 
+    # ── index.json (repo root — hub catalog) ──
+    index_path = Path.cwd() / "index.json"
+    index_skills = []
+    for s in registry.list_skills():
+        import json as _json2
+        index_skills.append({
+            "name": s["name"],
+            "description": s.get("description") or "",
+            "tags": _json2.loads(s.get("tags") or "[]"),
+            "path": f"skills/{s['name']}",
+            "usage_count": s.get("usage_count", 0),
+        })
+    index_payload = {
+        "hub_name": Path.cwd().name,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "skills": index_skills,
+    }
+    index_path.write_text(_json.dumps(index_payload, indent=2))
+    console.print(f"[green]✓[/green] index.json  → [bold]{index_path}[/bold]")
+
     console.print()
     console.print(f"  Exported [yellow]{len(skills)}[/yellow] skill(s).")
     console.print()
     console.print("  Push to GitHub:")
-    console.print("  [dim]git add web/ && git commit -m 'chore: update skill snapshot' && git push[/dim]")
+    console.print("  [dim]git add web/ index.json && git commit -m 'chore: update skill snapshot' && git push[/dim]")
     console.print()
     console.print("  README badge:  [cyan]![](web/bubbles.svg)[/cyan]")
     console.print("  Pages UI:      [cyan]https://<user>.github.io/<repo>/web/[/cyan]")
+    console.print("  Hub URL:       [cyan]sb hub add https://github.com/<user>/<repo>[/cyan]")
 
 
 # ── Hub group ────────────────────────────────────────────────────────────────

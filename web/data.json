@@ -1,4 +1,20 @@
 {
-  "exported_at": "2026-03-14T04:05:05.282252+00:00",
-  "skills": []
+  "exported_at": "2026-03-14T14:05:03.797756+00:00",
+  "skills": [
+    {
+      "name": "skill-bubble",
+      "path": "/Users/clveryang/.skill-bubble/skills/skill-bubble",
+      "description": "Local skill manager REST API",
+      "tags": [
+        "meta",
+        "management"
+      ],
+      "usage_count": 1,
+      "last_used": "2026-03-14T13:35:01.596699+00:00",
+      "loaded": 1,
+      "source_url": null,
+      "created_at": "2026-03-14T13:35:01.594137+00:00",
+      "radius": 120
+    }
+  ]
 }
