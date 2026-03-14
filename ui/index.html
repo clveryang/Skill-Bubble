@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Skill Bubble — Visual Skill Map</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d0d1a;
+      color: #e0e0ff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
+      backdrop-filter: blur(8px);
+      flex-shrink: 0;
+    }
+
+    header h1 {
+      font-size: 1.3rem;
+      font-weight: 600;
+      color: #a5b4fc;
+      letter-spacing: 0.02em;
+    }
+
+    header .tagline {
+      font-size: 0.8rem;
+      color: #6b7280;
+      margin-left: auto;
+    }
+
+    #canvas {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .bubble {
+      cursor: pointer;
+      transition: filter 0.2s;
+    }
+
+    .bubble:hover { filter: brightness(1.25); }
+
+    .bubble circle {
+      stroke-width: 1.5;
+    }
+
+    .bubble text {
+      pointer-events: none;
+      text-anchor: middle;
+      dominant-baseline: central;
+      font-weight: 600;
+      fill: #fff;
+    }
+
+    .bubble .uses-label {
+      font-size: 11px;
+      font-weight: 400;
+      fill: rgba(255,255,255,0.7);
+    }
+
+    /* Tooltip */
+    #tooltip {
+      position: absolute;
+      background: rgba(15,15,35,0.95);
+      border: 1px solid rgba(165,180,252,0.3);
+      border-radius: 10px;
+      padding: 12px 16px;
+      pointer-events: none;
+      font-size: 0.82rem;
+      line-height: 1.6;
+      max-width: 260px;
+      opacity: 0;
+      transition: opacity 0.15s;
+      z-index: 10;
+    }
+
+    #tooltip.visible { opacity: 1; }
+
+    #tooltip .tip-name {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #a5b4fc;
+      margin-bottom: 4px;
+    }
+
+    #tooltip .tip-desc { color: #9ca3af; }
+    #tooltip .tip-uses { color: #fbbf24; margin-top: 6px; }
+    #tooltip .tip-repo { color: #6b7280; font-size: 0.75rem; margin-top: 4px; }
+    #tooltip .tip-status { margin-top: 4px; }
+    #tooltip .active   { color: #34d399; }
+    #tooltip .inactive { color: #6b7280; }
+
+    /* Empty state */
+    #empty {
+      display: none;
+      position: absolute;
+      inset: 0;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+      color: #4b5563;
+      font-size: 1.1rem;
+    }
+
+    #empty.visible { display: flex; }
+    #empty span { font-size: 3rem; }
+    #empty p { font-size: 0.9rem; color: #374151; }
+
+    /* Legend */
+    #legend {
+      position: absolute;
+      bottom: 16px;
+      right: 20px;
+      font-size: 0.72rem;
+      color: #4b5563;
+      line-height: 1.8;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <span style="font-size:1.6rem">🫧</span>
+  <h1>Skill Bubble</h1>
+  <span class="tagline">Use a skill → its bubble grows</span>
+</header>
+
+<div id="canvas">
+  <svg id="viz"></svg>
+  <div id="empty">
+    <span>🫧</span>
+    <strong>No skills installed yet</strong>
+    <p>Run <code>sb install &lt;github-url&gt;</code> to add your first skill</p>
+  </div>
+  <div id="legend">
+    Bubble size = number of uses<br>
+    Hover a bubble for details
+  </div>
+</div>
+
+<div id="tooltip">
+  <div class="tip-name" id="tip-name"></div>
+  <div class="tip-desc" id="tip-desc"></div>
+  <div class="tip-uses" id="tip-uses"></div>
+  <div class="tip-repo" id="tip-repo"></div>
+  <div class="tip-status" id="tip-status"></div>
+</div>
+
+<!-- D3-free: pure SVG/JS force simulation -->
+<script>
+(async () => {
+  // ── Load registry ─────────────────────────────────────────────────────────
+  let registry = { skills: [] };
+  try {
+    const res = await fetch('../registry.json');
+    if (res.ok) registry = await res.json();
+  } catch {
+    // Fallback: try to detect if running in a local dev context.
+  }
+
+  // ── Inline demo data so the page works when opened directly without a server
+  if (!registry.skills || registry.skills.length === 0) {
+    registry = {
+      skills: [
+        { name: 'Code Review',      description: 'Automated code review with suggestions', repo: 'user/code-review-skill',  url: '#', uses: 312, active: true  },
+        { name: 'Test Writer',       description: 'Generate unit tests from source code',   repo: 'user/test-writer',        url: '#', uses: 180, active: true  },
+        { name: 'Docs Generator',    description: 'Auto-generate README and API docs',       repo: 'user/docs-gen',           url: '#', uses: 95,  active: true  },
+        { name: 'Bug Hunter',        description: 'Find and explain common bugs',            repo: 'user/bug-hunter',         url: '#', uses: 47,  active: false },
+        { name: 'Refactor Helper',   description: 'Suggest structural improvements',         repo: 'user/refactor-helper',    url: '#', uses: 23,  active: true  },
+        { name: 'Security Scanner',  description: 'Scan code for vulnerabilities',           repo: 'user/security-scan',      url: '#', uses: 10,  active: true  },
+        { name: 'Deploy Wizard',     description: 'One-command cloud deployments',           repo: 'user/deploy-wizard',      url: '#', uses: 5,   active: false },
+      ],
+    };
+  }
+
+  const skills = registry.skills;
+  if (skills.length === 0) {
+    document.getElementById('empty').classList.add('visible');
+    return;
+  }
+
+  // ── SVG setup ─────────────────────────────────────────────────────────────
+  const svgEl = document.getElementById('viz');
+  const W = () => svgEl.clientWidth  || svgEl.parentElement.clientWidth;
+  const H = () => svgEl.clientHeight || svgEl.parentElement.clientHeight;
+
+  const NS = 'http://www.w3.org/2000/svg';
+
+  // Radius scale (sqrt so area ∝ uses)
+  const maxUses = Math.max(...skills.map(s => s.uses || 1), 1);
+  function rScale(uses) {
+    return 28 + (Math.sqrt((uses || 0) / maxUses)) * 82;
+  }
+
+  const palette = [
+    '#6366f1','#8b5cf6','#ec4899','#14b8a6','#f59e0b','#10b981','#3b82f6',
+    '#a855f7','#ef4444','#06b6d4',
+  ];
+
+  // ── Nodes ─────────────────────────────────────────────────────────────────
+  const nodes = skills.map((s, i) => ({
+    ...s,
+    r:     rScale(s.uses || 0),
+    color: s.active === false ? '#374151' : palette[i % palette.length],
+    vx: (Math.random() - 0.5) * 2,
+    vy: (Math.random() - 0.5) * 2,
+    x:  W() * 0.2 + Math.random() * W() * 0.6,
+    y:  H() * 0.2 + Math.random() * H() * 0.6,
+  }));
+
+  // ── Build SVG defs (glow filters) ─────────────────────────────────────────
+  const defs = document.createElementNS(NS, 'defs');
+  nodes.forEach((n, i) => {
+    if (n.active === false) return;
+    const filter = document.createElementNS(NS, 'filter');
+    filter.setAttribute('id', `glow-${i}`);
+    filter.setAttribute('x', '-50%');
+    filter.setAttribute('y', '-50%');
+    filter.setAttribute('width', '200%');
+    filter.setAttribute('height', '200%');
+    const blur = document.createElementNS(NS, 'feGaussianBlur');
+    blur.setAttribute('stdDeviation', '5');
+    blur.setAttribute('result', 'blur');
+    const merge = document.createElementNS(NS, 'feMerge');
+    const n1 = document.createElementNS(NS, 'feMergeNode'); n1.setAttribute('in', 'blur');
+    const n2 = document.createElementNS(NS, 'feMergeNode'); n2.setAttribute('in', 'SourceGraphic');
+    merge.appendChild(n1); merge.appendChild(n2);
+    filter.appendChild(blur); filter.appendChild(merge);
+    defs.appendChild(filter);
+  });
+  svgEl.appendChild(defs);
+
+  // ── Draw bubbles ──────────────────────────────────────────────────────────
+  const groups = nodes.map((n, i) => {
+    const g = document.createElementNS(NS, 'g');
+    g.setAttribute('class', 'bubble');
+    g.style.cursor = 'pointer';
+
+    // Fill circle
+    const fill = document.createElementNS(NS, 'circle');
+    fill.setAttribute('r', n.r);
+    fill.setAttribute('fill', n.color + '33');
+    fill.setAttribute('stroke', n.color);
+    fill.setAttribute('stroke-width', '1.5');
+    if (n.active !== false) fill.setAttribute('filter', `url(#glow-${i})`);
+
+    // Name label
+    const label = document.createElementNS(NS, 'text');
+    label.setAttribute('text-anchor', 'middle');
+    label.setAttribute('dominant-baseline', 'central');
+    label.setAttribute('y', String(-8));
+    label.setAttribute('fill', '#fff');
+    label.setAttribute('font-weight', '600');
+    label.setAttribute('font-size', String(Math.max(10, Math.min(16, n.r / 3.5))));
+    label.setAttribute('pointer-events', 'none');
+    const displayName = n.name.length > 14 ? n.name.slice(0, 13) + '…' : n.name;
+    label.textContent = displayName;
+
+    // Uses label
+    const uses = document.createElementNS(NS, 'text');
+    uses.setAttribute('text-anchor', 'middle');
+    uses.setAttribute('dominant-baseline', 'central');
+    uses.setAttribute('y', String(12));
+    uses.setAttribute('fill', 'rgba(255,255,255,0.6)');
+    uses.setAttribute('font-size', String(Math.max(9, Math.min(13, n.r / 5))));
+    uses.setAttribute('pointer-events', 'none');
+    uses.textContent = `${n.uses || 0} uses`;
+
+    g.appendChild(fill);
+    g.appendChild(label);
+    g.appendChild(uses);
+    svgEl.appendChild(g);
+
+    // Tooltip events
+    g.addEventListener('mousemove', ev => showTip(ev, n));
+    g.addEventListener('mouseleave', hideTip);
+
+    return g;
+  });
+
+  // ── Tooltip ───────────────────────────────────────────────────────────────
+  const tooltip = document.getElementById('tooltip');
+
+  function showTip(ev, n) {
+    document.getElementById('tip-name').textContent = n.name;
+    document.getElementById('tip-desc').textContent = n.description || '';
+    document.getElementById('tip-uses').textContent = `${n.uses || 0} uses`;
+    document.getElementById('tip-repo').textContent = n.repo;
+    const statusEl = document.getElementById('tip-status');
+    if (n.active === false) {
+      statusEl.innerHTML = '<span class="inactive">● inactive</span>';
+    } else {
+      statusEl.innerHTML = '<span class="active">● active</span>';
+    }
+    tooltip.style.left = (ev.pageX + 14) + 'px';
+    tooltip.style.top  = (ev.pageY - 10) + 'px';
+    tooltip.classList.add('visible');
+  }
+
+  function hideTip() {
+    tooltip.classList.remove('visible');
+  }
+
+  // ── Simple force simulation ────────────────────────────────────────────────
+  let alpha = 1.0;
+  const ALPHA_DECAY = 0.012;
+  const CENTER_STRENGTH = 0.04;
+  const COLLIDE_ITER = 3;
+
+  function tick() {
+    if (alpha > 0.001) alpha *= (1 - ALPHA_DECAY);
+
+    const cx = W() / 2;
+    const cy = H() / 2;
+
+    // Center force
+    nodes.forEach(n => {
+      n.vx += (cx - n.x) * CENTER_STRENGTH * alpha;
+      n.vy += (cy - n.y) * CENTER_STRENGTH * alpha;
+    });
+
+    // Collision resolution (multiple iterations for stability)
+    for (let iter = 0; iter < COLLIDE_ITER; iter++) {
+      for (let a = 0; a < nodes.length; a++) {
+        for (let b = a + 1; b < nodes.length; b++) {
+          const na = nodes[a], nb = nodes[b];
+          const dx = nb.x - na.x;
+          const dy = nb.y - na.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
+          const minDist = na.r + nb.r + 8;
+          if (dist < minDist) {
+            const overlap = (minDist - dist) / 2;
+            const nx = (dx / dist) * overlap;
+            const ny = (dy / dist) * overlap;
+            na.x -= nx; na.y -= ny;
+            nb.x += nx; nb.y += ny;
+            na.vx -= nx * 0.1; na.vy -= ny * 0.1;
+            nb.vx += nx * 0.1; nb.vy += ny * 0.1;
+          }
+        }
+      }
+    }
+
+    // Velocity damping + integrate
+    const padding = 10;
+    nodes.forEach((n, i) => {
+      n.vx *= 0.6;
+      n.vy *= 0.6;
+      n.x += n.vx;
+      n.y += n.vy;
+      n.x = Math.max(n.r + padding, Math.min(W() - n.r - padding, n.x));
+      n.y = Math.max(n.r + padding, Math.min(H() - n.r - padding, n.y));
+      groups[i].setAttribute('transform', `translate(${n.x},${n.y})`);
+    });
+
+    requestAnimationFrame(tick);
+  }
+
+  requestAnimationFrame(tick);
+
+  // ── Resize ────────────────────────────────────────────────────────────────
+  window.addEventListener('resize', () => { alpha = Math.max(alpha, 0.3); });
+})();
+</script>
+</body>
+</html>
