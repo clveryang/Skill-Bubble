@@ -86,20 +86,60 @@ class _BubbleHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *_):
         pass  # silence default logging
 
+    def _json_response(self, status: int, data) -> None:
+        body = json.dumps(data).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", len(body))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
         if self.path == "/api/skills":
-            data = registry.bubble_data()
-            body = json.dumps(data).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", len(body))
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            self.wfile.write(body)
+            self._json_response(200, registry.bubble_data())
+        elif self.path == "/api/hubs/skills":
+            from skill_bubble import hubs as hubs_module
+            try:
+                skills = hubs_module.browse()
+                self._json_response(200, skills)
+            except Exception as e:
+                self._json_response(500, {"error": str(e)})
         else:
             # Serve static files from web/
             self.directory = str(WEB_DIR)
             super().do_GET()
+
+    def do_POST(self):
+        if self.path == "/api/install":
+            from skill_bubble import hubs as hubs_module
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length))
+            name = body.get("name")
+            hub_name = body.get("hub")
+            try:
+                meta = hubs_module.install_skill(name, hub_name)
+                try:
+                    registry.add_skill(
+                        meta["name"], meta["path"],
+                        meta.get("description", ""),
+                        meta.get("tags", []),
+                        source_url=meta.get("source_url"),
+                    )
+                except ValueError:
+                    registry.update_skill(
+                        meta["name"],
+                        path=meta["path"],
+                        description=meta.get("description", ""),
+                        tags=meta.get("tags", []),
+                        source_url=meta.get("source_url"),
+                    )
+                self._json_response(200, {"ok": True, "name": meta["name"]})
+            except RuntimeError as e:
+                self._json_response(500, {"error": str(e)})
+        else:
+            self.send_response(404)
+            self.end_headers()
 
 
 def open_web_ui(port: int = 7410) -> None:

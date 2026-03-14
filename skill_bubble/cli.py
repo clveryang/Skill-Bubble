@@ -13,6 +13,10 @@ Commands:
   sb ui              Open the bubble visualization in the browser
   sb token <token>   Save your GitHub token for sharing
   sb info <name>     Show details about a skill
+  sb hub             Manage skill hub registries
+  sb browse          Browse skills from registered hubs
+  sb install         Install a skill from a hub
+  sb publish         Publish a skill to a hub
 """
 
 import json
@@ -26,6 +30,7 @@ from rich.panel import Panel
 from rich.text import Text
 
 from skill_bubble import registry, loader, hub, visualizer
+from skill_bubble import hubs as hubs_module
 
 console = Console()
 
@@ -329,6 +334,196 @@ def cmd_export(out, svg_out):
     console.print()
     console.print("  README badge:  [cyan]![](web/bubbles.svg)[/cyan]")
     console.print("  Pages UI:      [cyan]https://<user>.github.io/<repo>/web/[/cyan]")
+
+
+# ── Hub group ────────────────────────────────────────────────────────────────
+
+@cli.group("hub")
+def hub_group():
+    """Manage skill hub registries (Git repos with skill catalogs)."""
+
+
+@hub_group.command("add")
+@click.argument("git_url")
+@click.option("--name", "-n", default=None, help="Alias for this hub.")
+def cmd_hub_add(git_url, name):
+    """Register a hub from a GitHub repo URL."""
+    try:
+        entry = hubs_module.add_hub(git_url, name)
+        console.print(f"[green]✓[/green] Hub [bold]{entry['name']}[/bold] registered")
+        console.print(f"  [dim]{entry['owner']}/{entry['repo']} @ {entry['branch']}[/dim]")
+    except (ValueError, RuntimeError) as e:
+        console.print(f"[red]✗[/red] {e}")
+        sys.exit(1)
+
+
+@hub_group.command("ls")
+def cmd_hub_ls():
+    """List registered hubs."""
+    from rich.table import Table
+    from rich import box as rbox
+
+    hubs = hubs_module.list_hubs()
+    if not hubs:
+        console.print("[dim]No hubs registered. Use: sb hub add <url>[/dim]")
+        return
+
+    table = Table(
+        title="[bold cyan]✦ Skill Hubs[/bold cyan]",
+        box=rbox.ROUNDED,
+        show_header=True,
+        header_style="bold white",
+        border_style="bright_black",
+    )
+    table.add_column("Name", style="bold")
+    table.add_column("URL")
+    table.add_column("Branch", style="dim")
+    table.add_column("Skills", justify="right", style="yellow")
+    table.add_column("Added", style="dim")
+
+    for h in hubs:
+        try:
+            index = hubs_module.fetch_index(h)
+            skill_count = str(len(index.get("skills", [])))
+        except Exception:
+            skill_count = "?"
+
+        added = h.get("added_at", "")[:10]
+        table.add_row(h["name"], h["url"], h["branch"], skill_count, added)
+
+    console.print(table)
+
+
+@hub_group.command("rm")
+@click.argument("name")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
+def cmd_hub_rm(name, yes):
+    """Remove a registered hub by NAME."""
+    if not yes:
+        click.confirm(f"Remove hub '{name}'?", abort=True)
+    try:
+        hubs_module.remove_hub(name)
+        console.print(f"[yellow]✓[/yellow] Hub [bold]{name}[/bold] removed")
+    except KeyError as e:
+        console.print(f"[red]✗[/red] {e}")
+        sys.exit(1)
+
+
+# ── Browse ────────────────────────────────────────────────────────────────────
+
+@cli.command("browse")
+@click.option("--hub", "hub_name", default=None, help="Browse a specific hub.")
+@click.option("--tag", default=None, help="Filter by tag.")
+@click.option("--json", "as_json", is_flag=True, help="Output raw JSON.")
+def cmd_browse(hub_name, tag, as_json):
+    """Browse skills available from registered hubs."""
+    from rich.table import Table
+    from rich import box as rbox
+    from rich.text import Text as RText
+
+    try:
+        skills = hubs_module.browse(hub_name, tag)
+    except Exception as e:
+        console.print(f"[red]✗[/red] {e}")
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps(skills, indent=2))
+        return
+
+    if not skills:
+        console.print("[dim]No skills found. Register a hub with: sb hub add <url>[/dim]")
+        return
+
+    table = Table(
+        title="[bold cyan]✦ Hub Skills[/bold cyan]",
+        box=rbox.ROUNDED,
+        show_header=True,
+        header_style="bold white",
+        border_style="bright_black",
+    )
+    table.add_column("Hub", style="dim")
+    table.add_column("Name", style="bold")
+    table.add_column("Description")
+    table.add_column("Tags", style="dim")
+    table.add_column("Uses", justify="right", style="yellow")
+    table.add_column("Status", justify="center")
+
+    for s in skills:
+        tags = ", ".join(s.get("tags") or []) or "—"
+        status = RText("● Installed", style="green") if s.get("installed") else RText("○ Available", style="dim")
+        table.add_row(
+            s.get("hub", ""),
+            s.get("name", ""),
+            s.get("description", "") or "—",
+            tags,
+            str(s.get("usage_count", 0)),
+            status,
+        )
+
+    console.print(table)
+    console.print(f"  [dim]{len(skills)} skill(s) available[/dim]")
+
+
+# ── Install ───────────────────────────────────────────────────────────────────
+
+@cli.command("install")
+@click.argument("skill_name")
+@click.option("--from", "hub_name", default=None, help="Hub to install from.")
+@click.option("--load", "auto_load", is_flag=True, help="Load immediately after installing.")
+def cmd_install(skill_name, hub_name, auto_load):
+    """Install a skill from a hub."""
+    console.print(f"[dim]Installing {skill_name}…[/dim]")
+    try:
+        meta = hubs_module.install_skill(skill_name, hub_name)
+    except RuntimeError as e:
+        console.print(f"[red]✗[/red] {e}")
+        sys.exit(1)
+
+    # Register or update in local registry
+    try:
+        registry.add_skill(
+            meta["name"], meta["path"],
+            meta.get("description", ""),
+            meta.get("tags", []),
+            source_url=meta.get("source_url"),
+        )
+    except ValueError:
+        registry.update_skill(
+            meta["name"],
+            path=meta["path"],
+            description=meta.get("description", ""),
+            tags=meta.get("tags", []),
+            source_url=meta.get("source_url"),
+        )
+
+    console.print(f"[green]✓[/green] Installed [bold]{meta['name']}[/bold] → {meta['path']}")
+
+    if auto_load:
+        loader.load_skill(meta["name"])
+        console.print(f"[cyan]⚡[/cyan] Loaded [bold]{meta['name']}[/bold]")
+
+
+# ── Publish ───────────────────────────────────────────────────────────────────
+
+@cli.command("publish")
+@click.argument("skill_name")
+@click.option("--to", "hub_name", required=True, help="Hub to publish to.")
+def cmd_publish(skill_name, hub_name):
+    """Publish a local skill to a hub repo."""
+    token = hub._token()
+    if not token:
+        console.print("[red]✗[/red] No GitHub token found.")
+        console.print("[dim]Run: sb token <your-token>[/dim]")
+        sys.exit(1)
+
+    console.print(f"[dim]Publishing {skill_name} to hub '{hub_name}'…[/dim]")
+    try:
+        url = hubs_module.publish_skill(skill_name, hub_name, token)
+        console.print(f"[green]✓[/green] Published! → [link={url}]{url}[/link]")
+    except (RuntimeError, KeyError, PermissionError, FileNotFoundError) as e:
+        console.print(f"[red]✗[/red] {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

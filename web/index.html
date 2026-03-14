@@ -169,6 +169,122 @@
       text-decoration: none;
     }
     .watermark:hover { opacity: .8; }
+
+    /* Panel toggle buttons */
+    .toggle-btns {
+      display: flex;
+      gap: 6px;
+    }
+    .toggle-btn {
+      background: #ffffff08;
+      border: 1px solid #ffffff15;
+      color: var(--text-dim);
+      padding: 5px 14px;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background .15s, color .15s;
+    }
+    .toggle-btn.active {
+      background: #7c6af722;
+      border-color: #7c6af744;
+      color: var(--accent);
+    }
+    .toggle-btn:hover:not(.active) {
+      background: #ffffff12;
+      color: var(--text);
+    }
+
+    /* Discover panel */
+    #discover-panel {
+      display: none;
+      position: absolute;
+      inset: 0;
+      overflow-y: auto;
+      padding: 20px;
+      background: var(--bg);
+    }
+    #discover-loading {
+      color: var(--text-dim);
+      font-size: 13px;
+      padding: 40px 0;
+      text-align: center;
+    }
+    #discover-error {
+      display: none;
+      color: #ff6b9d;
+      font-size: 13px;
+      padding: 20px 0;
+    }
+    #discover-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 14px;
+    }
+    .skill-card {
+      background: var(--surface);
+      border: 1px solid #ffffff10;
+      border-radius: 10px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .skill-card .card-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .skill-card .card-hub {
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+    .skill-card .card-desc {
+      font-size: 12px;
+      color: var(--text);
+      flex: 1;
+    }
+    .skill-card .card-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .card-tag {
+      background: #ffffff10;
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+    .card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 4px;
+    }
+    .install-btn {
+      background: #7c6af722;
+      border: 1px solid #7c6af744;
+      color: var(--accent);
+      padding: 5px 14px;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .install-btn:hover:not(:disabled) { background: #7c6af744; }
+    .install-btn:disabled {
+      opacity: .5;
+      cursor: default;
+    }
+    .install-btn.installed {
+      background: #4ecdc422;
+      border-color: #4ecdc444;
+      color: var(--loaded);
+      cursor: default;
+    }
   </style>
 </head>
 <body>
@@ -180,6 +296,10 @@
     <span>Loaded: <b id="stat-loaded" style="color:var(--loaded)">0</b></span>
     <span>Uses: <b id="stat-uses">0</b></span>
     <span class="last-updated" id="last-updated"></span>
+  </div>
+  <div class="toggle-btns" id="panel-toggle" style="display:none">
+    <button id="btn-my" class="toggle-btn active" onclick="showPanel('my')">My Skills</button>
+    <button id="btn-discover" class="toggle-btn" onclick="showPanel('discover')">Discover</button>
   </div>
 </header>
 
@@ -214,6 +334,12 @@
   <a class="watermark" href="https://github.com/clveryang/Skill-Bubble" target="_blank">
     github.com/clveryang/Skill-Bubble
   </a>
+
+  <div id="discover-panel">
+    <div id="discover-loading">Loading hub skills…</div>
+    <div id="discover-error"></div>
+    <div id="discover-list"></div>
+  </div>
 </div>
 
 <div id="tooltip"></div>
@@ -443,7 +569,101 @@ canvas.addEventListener('mouseleave', () => { hovered = null; tooltip.classList.
 
   initPositions();
   loop();
+
+  // Show panel toggle only when running on local dev server
+  if (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') {
+    document.getElementById('panel-toggle').style.display = 'flex';
+  }
 })();
+
+// ── Discover panel ────────────────────────────────────────────────────────────
+
+function showPanel(panel) {
+  const isDiscover = panel === 'discover';
+  document.getElementById('c').style.display = isDiscover ? 'none' : 'block';
+  document.querySelector('.legend').style.display = isDiscover ? 'none' : 'flex';
+  document.querySelector('.controls').style.display = isDiscover ? 'none' : 'flex';
+  document.getElementById('empty').style.display = 'none';
+  document.getElementById('discover-panel').style.display = isDiscover ? 'block' : 'none';
+  document.getElementById('btn-my').classList.toggle('active', !isDiscover);
+  document.getElementById('btn-discover').classList.toggle('active', isDiscover);
+  if (isDiscover) loadHubSkills();
+}
+
+async function loadHubSkills() {
+  const loading = document.getElementById('discover-loading');
+  const errorEl = document.getElementById('discover-error');
+  const list = document.getElementById('discover-list');
+  loading.style.display = 'block';
+  errorEl.style.display = 'none';
+  list.innerHTML = '';
+
+  try {
+    const res = await fetch('/api/hubs/skills');
+    if (!res.ok) throw new Error(`Server error: ${res.status}`);
+    const skills = await res.json();
+    loading.style.display = 'none';
+    if (!skills.length) {
+      list.innerHTML = '<div style="color:var(--text-dim);font-size:13px;padding:40px 0;text-align:center">No hub skills found. Register a hub with: <code style="color:var(--accent)">sb hub add &lt;url&gt;</code></div>';
+      return;
+    }
+    list.innerHTML = skills.map(s => renderSkillCard(s)).join('');
+  } catch (err) {
+    loading.style.display = 'none';
+    errorEl.textContent = 'Failed to load hub skills: ' + err.message;
+    errorEl.style.display = 'block';
+  }
+}
+
+function renderSkillCard(s) {
+  const tags = (s.tags || []).map(t => `<span class="card-tag">${t}</span>`).join('');
+  const btnClass = s.installed ? 'install-btn installed' : 'install-btn';
+  const btnLabel = s.installed ? '✓ Installed' : 'Install';
+  const btnDisabled = s.installed ? 'disabled' : '';
+  const btnId = `install-btn-${s.hub}-${s.name}`.replace(/[^a-z0-9-]/gi, '_');
+  return `
+    <div class="skill-card">
+      <div class="card-name">${s.name}</div>
+      <div class="card-hub">hub: ${s.hub || ''}</div>
+      <div class="card-desc">${s.description || '<span style="color:var(--text-dim)">No description</span>'}</div>
+      ${tags ? `<div class="card-tags">${tags}</div>` : ''}
+      <div class="card-footer">
+        <span style="font-size:11px;color:var(--text-dim)">Uses: ${s.usage_count || 0}</span>
+        <button id="${btnId}" class="${btnClass}" ${btnDisabled}
+          onclick="installSkill('${s.name}', '${s.hub || ''}', '${btnId}')">
+          ${btnLabel}
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+async function installSkill(name, hub, btnId) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  btn.disabled = true;
+  btn.textContent = 'Installing…';
+  try {
+    const res = await fetch('/api/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, hub }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      btn.textContent = '✓ Installed';
+      btn.className = 'install-btn installed';
+    } else {
+      btn.textContent = 'Install';
+      btn.disabled = false;
+      alert('Install failed: ' + (data.error || 'unknown error'));
+    }
+  } catch (err) {
+    btn.textContent = 'Install';
+    btn.disabled = false;
+    alert('Install failed: ' + err.message);
+  }
+}
 </script>
 </body>
 </html>
