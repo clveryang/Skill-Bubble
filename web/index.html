@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>✦ Skill Bubble</title>
+  <style>
+    :root {
+      --bg: #0d0d14;
+      --surface: #16161f;
+      --accent: #7c6af7;
+      --accent2: #4ecdc4;
+      --accent3: #ff6b9d;
+      --text: #e8e8f0;
+      --text-dim: #6b6b88;
+      --loaded: #4ecdc4;
+      --idle: #3a3a52;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #ffffff08;
+      background: #0d0d1499;
+      backdrop-filter: blur(8px);
+      z-index: 10;
+    }
+
+    header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: .05em;
+      color: var(--accent);
+    }
+
+    header h1 span { color: var(--text-dim); font-weight: 400; }
+
+    .stats {
+      font-size: 12px;
+      color: var(--text-dim);
+      display: flex;
+      gap: 20px;
+    }
+
+    .stats b { color: var(--text); }
+
+    #canvas-wrap {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    canvas {
+      position: absolute;
+      inset: 0;
+    }
+
+    /* Tooltip */
+    #tooltip {
+      position: fixed;
+      background: var(--surface);
+      border: 1px solid #ffffff15;
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 12px;
+      line-height: 1.7;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .15s;
+      max-width: 260px;
+      z-index: 100;
+      box-shadow: 0 8px 32px #00000060;
+    }
+
+    #tooltip.show { opacity: 1; }
+
+    #tooltip .t-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 4px;
+    }
+
+    #tooltip .t-dim { color: var(--text-dim); }
+    #tooltip .t-tag {
+      display: inline-block;
+      background: #ffffff10;
+      border-radius: 4px;
+      padding: 1px 6px;
+      margin: 2px 2px 0 0;
+      font-size: 11px;
+    }
+
+    #tooltip .t-loaded {
+      color: var(--loaded);
+      font-size: 11px;
+    }
+
+    /* Legend */
+    .legend {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      font-size: 11px;
+      color: var(--text-dim);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    /* Controls */
+    .controls {
+      position: absolute;
+      top: 16px;
+      right: 20px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn {
+      background: #ffffff08;
+      border: 1px solid #ffffff12;
+      color: var(--text-dim);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all .15s;
+    }
+
+    .btn:hover {
+      background: #ffffff14;
+      color: var(--text);
+    }
+
+    .empty-state {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: var(--text-dim);
+      font-size: 14px;
+    }
+
+    .empty-state .big { font-size: 48px; opacity: .3; }
+
+    .empty-state code {
+      background: #ffffff08;
+      padding: 4px 10px;
+      border-radius: 6px;
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>✦ Skill Bubble <span>/ visual skill manager</span></h1>
+  <div class="stats">
+    <span>Total: <b id="stat-total">0</b></span>
+    <span>Loaded: <b id="stat-loaded" style="color:var(--loaded)">0</b></span>
+    <span>Uses: <b id="stat-uses">0</b></span>
+  </div>
+</header>
+
+<div id="canvas-wrap">
+  <canvas id="c"></canvas>
+  <div class="legend">
+    <div class="legend-item">
+      <div class="legend-dot" style="background:var(--loaded);opacity:.8"></div>
+      <span>Active / loaded</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:var(--idle)"></div>
+      <span>Idle</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:var(--accent);opacity:.6"></div>
+      <span>Bubble size = usage</span>
+    </div>
+  </div>
+  <div class="controls">
+    <button class="btn" onclick="refresh()">⟳ Refresh</button>
+  </div>
+  <div id="empty" class="empty-state" style="display:none">
+    <div class="big">◎</div>
+    <div>No skills registered yet.</div>
+    <div>Add one with <code>sb add &lt;path&gt;</code></div>
+  </div>
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+// ── Physics ──────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const tooltip = document.getElementById('tooltip');
+
+let W, H, bubbles = [], hovered = null, frame;
+
+function resize() {
+  const wrap = document.getElementById('canvas-wrap');
+  W = canvas.width = wrap.clientWidth;
+  H = canvas.height = wrap.clientHeight;
+  if (bubbles.length) layout();
+}
+
+window.addEventListener('resize', resize);
+
+// ── Data ──────────────────────────────────────────────────────────────────────
+
+async function loadData() {
+  try {
+    const res = await fetch('/api/skills');
+    return await res.json();
+  } catch { return []; }
+}
+
+function updateStats(data) {
+  document.getElementById('stat-total').textContent = data.length;
+  document.getElementById('stat-loaded').textContent = data.filter(d => d.loaded).length;
+  document.getElementById('stat-uses').textContent = data.reduce((s, d) => s + d.usage_count, 0);
+  document.getElementById('empty').style.display = data.length === 0 ? 'flex' : 'none';
+}
+
+// ── Layout ────────────────────────────────────────────────────────────────────
+
+function layout() {
+  // Simple force-directed separation
+  const padding = 8;
+  for (const b of bubbles) {
+    if (b.x === undefined) {
+      b.x = Math.random() * W;
+      b.y = Math.random() * H;
+      b.vx = (Math.random() - .5) * 2;
+      b.vy = (Math.random() - .5) * 2;
+    }
+  }
+}
+
+function physics() {
+  const damping = 0.85;
+  const repulse = 1.2;
+
+  for (let i = 0; i < bubbles.length; i++) {
+    const a = bubbles[i];
+    // Gravity to center
+    a.vx += (W / 2 - a.x) * 0.002;
+    a.vy += (H / 2 - a.y) * 0.002;
+
+    for (let j = i + 1; j < bubbles.length; j++) {
+      const b = bubbles[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const minDist = a.r + b.r + 12;
+      if (dist < minDist) {
+        const force = (minDist - dist) / minDist * repulse;
+        const fx = (dx / dist) * force;
+        const fy = (dy / dist) * force;
+        a.vx -= fx; a.vy -= fy;
+        b.vx += fx; b.vy += fy;
+      }
+    }
+
+    a.vx *= damping; a.vy *= damping;
+    a.x += a.vx;   a.y += a.vy;
+
+    // Bounce off walls
+    const margin = a.r + 4;
+    if (a.x < margin) { a.x = margin; a.vx *= -0.5; }
+    if (a.x > W - margin) { a.x = W - margin; a.vx *= -0.5; }
+    if (a.y < margin) { a.y = margin; a.vy *= -0.5; }
+    if (a.y > H - margin) { a.y = H - margin; a.vy *= -0.5; }
+  }
+}
+
+// ── Drawing ───────────────────────────────────────────────────────────────────
+
+const PALETTE_LOADED  = ['#4ecdc4', '#7c6af7', '#4ecdc4'];
+const PALETTE_IDLE    = ['#3a3a58', '#2e2e46', '#3a3a58'];
+const PALETTE_HOVER   = ['#ff6b9d', '#f9c74f', '#ff6b9d'];
+
+function gradientFor(b, isHover) {
+  const g = ctx.createRadialGradient(b.x - b.r * 0.3, b.y - b.r * 0.3, 0, b.x, b.y, b.r);
+  const pal = isHover ? PALETTE_HOVER : (b.loaded ? PALETTE_LOADED : PALETTE_IDLE);
+  g.addColorStop(0, pal[0] + 'cc');
+  g.addColorStop(0.6, pal[1] + '88');
+  g.addColorStop(1, pal[2] + '33');
+  return g;
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Draw connections between loaded bubbles
+  const loaded = bubbles.filter(b => b.loaded);
+  ctx.save();
+  ctx.strokeStyle = '#4ecdc420';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < loaded.length; i++) {
+    for (let j = i + 1; j < loaded.length; j++) {
+      const a = loaded[i], b = loaded[j];
+      const dist = Math.hypot(b.x - a.x, b.y - a.y);
+      if (dist < 280) {
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+    }
+  }
+  ctx.restore();
+
+  for (const b of bubbles) {
+    const isHover = b === hovered;
+    const scaleFactor = isHover ? 1.12 : (b.loaded ? 1 + Math.sin(Date.now() / 1000 + b._phase) * 0.02 : 1);
+    const r = b.r * scaleFactor;
+
+    // Glow
+    if (b.loaded || isHover) {
+      ctx.save();
+      ctx.shadowColor = isHover ? '#ff6b9d' : '#4ecdc4';
+      ctx.shadowBlur = isHover ? 30 : 18;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = 'transparent';
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Bubble fill
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = gradientFor(b, isHover);
+    ctx.fill();
+
+    // Rim
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+    ctx.strokeStyle = (isHover ? '#ff6b9d' : b.loaded ? '#4ecdc4' : '#4a4a6a') + '88';
+    ctx.lineWidth = isHover ? 2 : 1;
+    ctx.stroke();
+
+    // Shine
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(b.x - r * 0.28, b.y - r * 0.28, r * 0.18, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff22';
+    ctx.fill();
+    ctx.restore();
+
+    // Label
+    const fontSize = Math.max(10, Math.min(14, r * 0.38));
+    ctx.font = `600 ${fontSize}px SF Mono, Fira Code, monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = b.loaded ? '#e8fffe' : '#8888aa';
+    // Clip label inside circle
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, r - 4, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillText(b.name, b.x, b.y);
+    ctx.restore();
+
+    // Usage count badge
+    if (b.usage_count > 0) {
+      const bx = b.x + r * 0.65, by = b.y - r * 0.65;
+      ctx.beginPath();
+      ctx.arc(bx, by, 9, 0, Math.PI * 2);
+      ctx.fillStyle = '#7c6af7';
+      ctx.fill();
+      ctx.font = 'bold 8px monospace';
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(b.usage_count > 99 ? '99+' : String(b.usage_count), bx, by);
+    }
+  }
+}
+
+function loop() {
+  physics();
+  draw();
+  frame = requestAnimationFrame(loop);
+}
+
+// ── Tooltip ───────────────────────────────────────────────────────────────────
+
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  hovered = bubbles.find(b => Math.hypot(b.x - mx, b.y - my) < b.r) || null;
+
+  if (hovered) {
+    const b = hovered;
+    const tags = (b.tags || []).map(t => `<span class="t-tag">${t}</span>`).join('') || '—';
+    tooltip.innerHTML = `
+      <div class="t-name">${b.name}</div>
+      <div>${b.description || '<span class="t-dim">no description</span>'}</div>
+      <div style="margin-top:6px">${tags}</div>
+      <div style="margin-top:8px" class="t-dim">Uses: <b style="color:#f9c74f">${b.usage_count}</b></div>
+      ${b.loaded ? '<div class="t-loaded">⚡ active</div>' : ''}
+    `;
+    tooltip.style.left = (e.clientX + 14) + 'px';
+    tooltip.style.top  = (e.clientY - 10) + 'px';
+    tooltip.classList.add('show');
+    canvas.style.cursor = 'pointer';
+  } else {
+    tooltip.classList.remove('show');
+    canvas.style.cursor = 'default';
+  }
+});
+
+canvas.addEventListener('mouseleave', () => {
+  hovered = null;
+  tooltip.classList.remove('show');
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+async function refresh() {
+  const data = await loadData();
+  updateStats(data);
+
+  // Preserve positions for existing bubbles
+  const existing = {};
+  for (const b of bubbles) existing[b.name] = b;
+
+  bubbles = data.map((d, i) => {
+    const prev = existing[d.name] || {};
+    return {
+      ...d,
+      r: d.radius || 40,
+      x: prev.x,
+      y: prev.y,
+      vx: prev.vx || (Math.random() - .5) * 2,
+      vy: prev.vy || (Math.random() - .5) * 2,
+      _phase: prev._phase ?? (i * 1.3),
+    };
+  });
+
+  layout();
+}
+
+(async () => {
+  resize();
+  await refresh();
+  loop();
+  // Auto-refresh every 5s
+  setInterval(refresh, 5000);
+})();
+</script>
+</body>
+</html>
