@@ -1,0 +1,30 @@
+{
+  "name": "skill-bubble",
+  "version": "1.0.0",
+  "description": "A visual skill manager for AI agents — where every skill is a bubble, and the more you use it, the bigger it grows.",
+  "main": "src/installer.js",
+  "bin": {
+    "sb": "./cli/sb.js"
+  },
+  "scripts": {
+    "test": "jest --testPathPattern=tests/",
+    "start": "node cli/sb.js"
+  },
+  "keywords": [
+    "ai",
+    "skills",
+    "agent",
+    "bubble",
+    "visual"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.13.5",
+    "chalk": "^4.1.2",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}
