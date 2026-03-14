@@ -278,5 +278,58 @@ def cmd_sync():
     console.print("[green]✓[/green] Synced loaded state from manifest.")
 
 
+@cli.command("export")
+@click.option(
+    "--out", "-o",
+    default=None,
+    help="Output path for data.json (default: web/data.json relative to CWD)."
+)
+@click.option(
+    "--svg-out", "-s",
+    default=None,
+    help="Output path for bubbles.svg (default: web/bubbles.svg relative to CWD)."
+)
+def cmd_export(out, svg_out):
+    """Export skill data for GitHub Pages + README visualization.
+
+    Generates two files:
+      web/data.json    — powers the interactive GitHub Pages bubble UI
+      web/bubbles.svg  — embeds directly in README.md
+
+    Run this then push to GitHub to update both.
+    """
+    import json as _json
+    from datetime import datetime, timezone
+    from skill_bubble.svg_export import generate_svg
+
+    # ── data.json ──
+    out_path = Path(out) if out else Path.cwd() / "web" / "data.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    skills = registry.bubble_data()
+    payload = {
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "skills": skills,
+    }
+    out_path.write_text(_json.dumps(payload, indent=2))
+    console.print(f"[green]✓[/green] data.json  → [bold]{out_path}[/bold]")
+
+    # ── bubbles.svg ──
+    svg_path = Path(svg_out) if svg_out else Path.cwd() / "web" / "bubbles.svg"
+    svg_path.parent.mkdir(parents=True, exist_ok=True)
+    svg_content = generate_svg(skills)
+    svg_path.write_text(svg_content)
+    console.print(f"[green]✓[/green] bubbles.svg → [bold]{svg_path}[/bold]")
+
+    console.print()
+    console.print(f"  Exported [yellow]{len(skills)}[/yellow] skill(s).")
+    console.print()
+    console.print("  Push to GitHub:")
+    console.print("  [dim]git add web/ && git commit -m 'chore: update skill snapshot' && git push[/dim]")
+    console.print()
+    console.print("  README badge:  [cyan]![](web/bubbles.svg)[/cyan]")
+    console.print("  Pages UI:      [cyan]https://<user>.github.io/<repo>/web/[/cyan]")
+
+
 if __name__ == "__main__":
     cli()

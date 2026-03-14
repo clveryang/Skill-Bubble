@@ -48,7 +48,7 @@ def _ensure_schema(con: sqlite3.Connection) -> None:
 # ── CRUD ──────────────────────────────────────────────────────────────────────
 
 def add_skill(name: str, path: str, description: str = "",
-              tags: list[str] | None = None, source_url: str | None = None) -> None:
+              tags: Optional[list] = None, source_url: Optional[str] = None) -> None:
     """Register a skill. Raises ValueError if name already taken."""
     with _conn() as con:
         existing = con.execute("SELECT name FROM skills WHERE name=?", (name,)).fetchone()

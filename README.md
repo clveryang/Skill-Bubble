@@ -5,6 +5,10 @@
 Skills are bubbles. The more an agent uses a skill, the bigger its bubble becomes.
 One-click to add, load, share, and discover skills across agents.
 
+🌐 **Live visualization → [clveryang.github.io/Skill-Bubble/web/](https://clveryang.github.io/Skill-Bubble/web/)**
+
+![Skill Bubble visualization](web/bubbles.svg)
+
 ---
 
 ## Concepts
@@ -147,6 +151,27 @@ bubbles = registry.bubble_data()
 
 ## Web Visualization
 
+### GitHub Pages (public, auto-hosted)
+
+```bash
+# 1. Export your current skill registry to a static snapshot
+sb export
+
+# 2. Push to GitHub — visualization updates automatically
+git add web/data.json
+git commit -m "chore: update skill snapshot"
+git push
+```
+
+Then enable **GitHub Pages** in your repo Settings → Pages → Source: `main` branch, `/ (root)`.
+
+Your bubble visualization will be live at:
+```
+https://<your-username>.github.io/<repo>/web/
+```
+
+### Local dev server
+
 ```bash
 sb ui            # opens http://127.0.0.1:7410
 sb ui --port 8080
@@ -156,7 +181,7 @@ sb ui --port 8080
 - **Glowing / teal** = currently loaded
 - **Gray** = idle
 - **Connected lines** = loaded skills that are active together
-- Hover for details — click to inspect
+- Hover for name, description, tags, and usage count
 
 ---
 

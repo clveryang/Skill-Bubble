@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 860 120" width="860" height="120">
+  <rect width="860" height="120" rx="12" fill="#0d0d14"/>
+  <text x="430" y="55" text-anchor="middle"
+        font-family="monospace" font-size="28" fill="#3a3a52">◎</text>
+  <text x="430" y="82" text-anchor="middle"
+        font-family="monospace" font-size="12" fill="#6b6b88">
+    No skills yet — run sb add &lt;path&gt;
+  </text>
+</svg>

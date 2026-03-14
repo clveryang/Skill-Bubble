@@ -54,9 +54,16 @@
       color: var(--text-dim);
       display: flex;
       gap: 20px;
+      align-items: center;
     }
 
     .stats b { color: var(--text); }
+
+    .last-updated {
+      font-size: 11px;
+      color: var(--text-dim);
+      opacity: .6;
+    }
 
     #canvas-wrap {
       flex: 1;
@@ -87,14 +94,7 @@
     }
 
     #tooltip.show { opacity: 1; }
-
-    #tooltip .t-name {
-      font-size: 14px;
-      font-weight: 700;
-      color: var(--accent);
-      margin-bottom: 4px;
-    }
-
+    #tooltip .t-name { font-size: 14px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
     #tooltip .t-dim { color: var(--text-dim); }
     #tooltip .t-tag {
       display: inline-block;
@@ -104,11 +104,7 @@
       margin: 2px 2px 0 0;
       font-size: 11px;
     }
-
-    #tooltip .t-loaded {
-      color: var(--loaded);
-      font-size: 11px;
-    }
+    #tooltip .t-loaded { color: var(--loaded); font-size: 11px; }
 
     /* Legend */
     .legend {
@@ -121,18 +117,8 @@
       flex-direction: column;
       gap: 6px;
     }
-
-    .legend-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .legend-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-    }
+    .legend-item { display: flex; align-items: center; gap: 8px; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
 
     /* Controls */
     .controls {
@@ -141,23 +127,16 @@
       right: 20px;
       display: flex;
       gap: 8px;
+      align-items: center;
     }
 
-    .btn {
-      background: #ffffff08;
-      border: 1px solid #ffffff12;
-      color: var(--text-dim);
-      padding: 6px 12px;
+    .badge {
+      background: #7c6af722;
+      border: 1px solid #7c6af744;
+      color: var(--accent);
+      padding: 4px 10px;
       border-radius: 6px;
       font-size: 11px;
-      font-family: inherit;
-      cursor: pointer;
-      transition: all .15s;
-    }
-
-    .btn:hover {
-      background: #ffffff14;
-      color: var(--text);
     }
 
     .empty-state {
@@ -171,15 +150,25 @@
       color: var(--text-dim);
       font-size: 14px;
     }
-
     .empty-state .big { font-size: 48px; opacity: .3; }
-
     .empty-state code {
       background: #ffffff08;
       padding: 4px 10px;
       border-radius: 6px;
       color: var(--accent);
     }
+
+    /* Watermark */
+    .watermark {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      font-size: 11px;
+      color: var(--text-dim);
+      opacity: .4;
+      text-decoration: none;
+    }
+    .watermark:hover { opacity: .8; }
   </style>
 </head>
 <body>
@@ -190,11 +179,13 @@
     <span>Total: <b id="stat-total">0</b></span>
     <span>Loaded: <b id="stat-loaded" style="color:var(--loaded)">0</b></span>
     <span>Uses: <b id="stat-uses">0</b></span>
+    <span class="last-updated" id="last-updated"></span>
   </div>
 </header>
 
 <div id="canvas-wrap">
   <canvas id="c"></canvas>
+
   <div class="legend">
     <div class="legend-item">
       <div class="legend-dot" style="background:var(--loaded);opacity:.8"></div>
@@ -209,14 +200,20 @@
       <span>Bubble size = usage</span>
     </div>
   </div>
+
   <div class="controls">
-    <button class="btn" onclick="refresh()">⟳ Refresh</button>
+    <span class="badge">📊 GitHub Pages · static snapshot</span>
   </div>
+
   <div id="empty" class="empty-state" style="display:none">
     <div class="big">◎</div>
-    <div>No skills registered yet.</div>
-    <div>Add one with <code>sb add &lt;path&gt;</code></div>
+    <div>No skills in snapshot.</div>
+    <div>Run <code>sb export</code> then push to update.</div>
   </div>
+
+  <a class="watermark" href="https://github.com/clveryang/Skill-Bubble" target="_blank">
+    github.com/clveryang/Skill-Bubble
+  </a>
 </div>
 
 <div id="tooltip"></div>
@@ -227,202 +224,187 @@ const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 const tooltip = document.getElementById('tooltip');
 
-let W, H, bubbles = [], hovered = null, frame;
+let W, H, bubbles = [], hovered = null;
 
 function resize() {
   const wrap = document.getElementById('canvas-wrap');
   W = canvas.width = wrap.clientWidth;
   H = canvas.height = wrap.clientHeight;
-  if (bubbles.length) layout();
+  if (bubbles.length) initPositions();
 }
-
 window.addEventListener('resize', resize);
 
 // ── Data ──────────────────────────────────────────────────────────────────────
-
+// Tries data.json first (static/GitHub Pages), falls back to /api/skills (local server)
 async function loadData() {
+  // Try static snapshot
+  try {
+    const res = await fetch('./data.json');
+    if (res.ok) {
+      const json = await res.json();
+      // Support both { skills: [...], exported_at: ... } and plain array
+      if (Array.isArray(json)) return { skills: json, exported_at: null };
+      return json;
+    }
+  } catch {}
+  // Fallback: local dev server
   try {
     const res = await fetch('/api/skills');
-    return await res.json();
-  } catch { return []; }
+    if (res.ok) return { skills: await res.json(), exported_at: null };
+  } catch {}
+  return { skills: [], exported_at: null };
 }
 
-function updateStats(data) {
-  document.getElementById('stat-total').textContent = data.length;
-  document.getElementById('stat-loaded').textContent = data.filter(d => d.loaded).length;
-  document.getElementById('stat-uses').textContent = data.reduce((s, d) => s + d.usage_count, 0);
-  document.getElementById('empty').style.display = data.length === 0 ? 'flex' : 'none';
+function updateStats(data, exportedAt) {
+  const skills = data;
+  document.getElementById('stat-total').textContent = skills.length;
+  document.getElementById('stat-loaded').textContent = skills.filter(d => d.loaded).length;
+  document.getElementById('stat-uses').textContent = skills.reduce((s, d) => s + (d.usage_count || 0), 0);
+  document.getElementById('empty').style.display = skills.length === 0 ? 'flex' : 'none';
+  if (exportedAt) {
+    const d = new Date(exportedAt);
+    document.getElementById('last-updated').textContent =
+      'snapshot: ' + d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  }
 }
 
-// ── Layout ────────────────────────────────────────────────────────────────────
+// ── Bubble math ───────────────────────────────────────────────────────────────
+const MIN_R = 32, MAX_R = 110;
 
-function layout() {
-  // Simple force-directed separation
-  const padding = 8;
+function calcRadius(usage, maxUsage) {
+  if (maxUsage === 0) return MIN_R;
+  const ratio = Math.log1p(usage) / Math.log1p(maxUsage);
+  return MIN_R + ratio * (MAX_R - MIN_R);
+}
+
+// ── Layout / physics ──────────────────────────────────────────────────────────
+function initPositions() {
   for (const b of bubbles) {
     if (b.x === undefined) {
-      b.x = Math.random() * W;
-      b.y = Math.random() * H;
-      b.vx = (Math.random() - .5) * 2;
-      b.vy = (Math.random() - .5) * 2;
+      b.x = b.r + Math.random() * (W - b.r * 2);
+      b.y = b.r + Math.random() * (H - b.r * 2);
+      b.vx = (Math.random() - .5) * 1.5;
+      b.vy = (Math.random() - .5) * 1.5;
     }
   }
 }
 
 function physics() {
-  const damping = 0.85;
-  const repulse = 1.2;
-
+  const damp = 0.86, repulse = 1.3;
   for (let i = 0; i < bubbles.length; i++) {
     const a = bubbles[i];
-    // Gravity to center
-    a.vx += (W / 2 - a.x) * 0.002;
-    a.vy += (H / 2 - a.y) * 0.002;
-
+    a.vx += (W / 2 - a.x) * 0.0018;
+    a.vy += (H / 2 - a.y) * 0.0018;
     for (let j = i + 1; j < bubbles.length; j++) {
       const b = bubbles[j];
       const dx = b.x - a.x, dy = b.y - a.y;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const minDist = a.r + b.r + 12;
-      if (dist < minDist) {
-        const force = (minDist - dist) / minDist * repulse;
-        const fx = (dx / dist) * force;
-        const fy = (dy / dist) * force;
-        a.vx -= fx; a.vy -= fy;
-        b.vx += fx; b.vy += fy;
+      const minD = a.r + b.r + 14;
+      if (dist < minD) {
+        const f = (minD - dist) / minD * repulse;
+        const fx = (dx / dist) * f, fy = (dy / dist) * f;
+        a.vx -= fx; a.vy -= fy; b.vx += fx; b.vy += fy;
       }
     }
-
-    a.vx *= damping; a.vy *= damping;
-    a.x += a.vx;   a.y += a.vy;
-
-    // Bounce off walls
-    const margin = a.r + 4;
-    if (a.x < margin) { a.x = margin; a.vx *= -0.5; }
-    if (a.x > W - margin) { a.x = W - margin; a.vx *= -0.5; }
-    if (a.y < margin) { a.y = margin; a.vy *= -0.5; }
-    if (a.y > H - margin) { a.y = H - margin; a.vy *= -0.5; }
+    a.vx *= damp; a.vy *= damp;
+    a.x += a.vx;  a.y += a.vy;
+    const m = a.r + 4;
+    if (a.x < m) { a.x = m; a.vx *= -.5; }
+    if (a.x > W - m) { a.x = W - m; a.vx *= -.5; }
+    if (a.y < m) { a.y = m; a.vy *= -.5; }
+    if (a.y > H - m) { a.y = H - m; a.vy *= -.5; }
   }
 }
 
 // ── Drawing ───────────────────────────────────────────────────────────────────
+const PAL_LOADED = ['#4ecdc4', '#7c6af7', '#4ecdc4'];
+const PAL_IDLE   = ['#3a3a58', '#2e2e46', '#3a3a58'];
+const PAL_HOVER  = ['#ff6b9d', '#f9c74f', '#ff6b9d'];
 
-const PALETTE_LOADED  = ['#4ecdc4', '#7c6af7', '#4ecdc4'];
-const PALETTE_IDLE    = ['#3a3a58', '#2e2e46', '#3a3a58'];
-const PALETTE_HOVER   = ['#ff6b9d', '#f9c74f', '#ff6b9d'];
-
-function gradientFor(b, isHover) {
-  const g = ctx.createRadialGradient(b.x - b.r * 0.3, b.y - b.r * 0.3, 0, b.x, b.y, b.r);
-  const pal = isHover ? PALETTE_HOVER : (b.loaded ? PALETTE_LOADED : PALETTE_IDLE);
-  g.addColorStop(0, pal[0] + 'cc');
-  g.addColorStop(0.6, pal[1] + '88');
-  g.addColorStop(1, pal[2] + '33');
+function grad(b, isHover) {
+  const g = ctx.createRadialGradient(b.x - b.r * .3, b.y - b.r * .3, 0, b.x, b.y, b.r);
+  const p = isHover ? PAL_HOVER : (b.loaded ? PAL_LOADED : PAL_IDLE);
+  g.addColorStop(0, p[0] + 'cc');
+  g.addColorStop(.6, p[1] + '88');
+  g.addColorStop(1, p[2] + '33');
   return g;
 }
 
 function draw() {
   ctx.clearRect(0, 0, W, H);
 
-  // Draw connections between loaded bubbles
+  // Connections between loaded bubbles
   const loaded = bubbles.filter(b => b.loaded);
   ctx.save();
   ctx.strokeStyle = '#4ecdc420';
   ctx.lineWidth = 1;
-  for (let i = 0; i < loaded.length; i++) {
+  for (let i = 0; i < loaded.length; i++)
     for (let j = i + 1; j < loaded.length; j++) {
-      const a = loaded[i], b = loaded[j];
-      const dist = Math.hypot(b.x - a.x, b.y - a.y);
-      if (dist < 280) {
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
-        ctx.stroke();
+      const [a, b] = [loaded[i], loaded[j]];
+      if (Math.hypot(b.x - a.x, b.y - a.y) < 300) {
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
       }
     }
-  }
   ctx.restore();
 
   for (const b of bubbles) {
     const isHover = b === hovered;
-    const scaleFactor = isHover ? 1.12 : (b.loaded ? 1 + Math.sin(Date.now() / 1000 + b._phase) * 0.02 : 1);
-    const r = b.r * scaleFactor;
+    const pulse = b.loaded ? 1 + Math.sin(Date.now() / 1000 + b._phase) * 0.022 : 1;
+    const r = b.r * (isHover ? 1.13 : pulse);
 
     // Glow
     if (b.loaded || isHover) {
       ctx.save();
       ctx.shadowColor = isHover ? '#ff6b9d' : '#4ecdc4';
-      ctx.shadowBlur = isHover ? 30 : 18;
-      ctx.beginPath();
-      ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
-      ctx.fillStyle = 'transparent';
-      ctx.fill();
+      ctx.shadowBlur  = isHover ? 32 : 20;
+      ctx.beginPath(); ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = 'transparent'; ctx.fill();
       ctx.restore();
     }
 
-    // Bubble fill
-    ctx.beginPath();
-    ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
-    ctx.fillStyle = gradientFor(b, isHover);
-    ctx.fill();
+    // Fill
+    ctx.beginPath(); ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = grad(b, isHover); ctx.fill();
 
     // Rim
-    ctx.beginPath();
-    ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+    ctx.beginPath(); ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
     ctx.strokeStyle = (isHover ? '#ff6b9d' : b.loaded ? '#4ecdc4' : '#4a4a6a') + '88';
-    ctx.lineWidth = isHover ? 2 : 1;
-    ctx.stroke();
+    ctx.lineWidth = isHover ? 2 : 1; ctx.stroke();
 
     // Shine
     ctx.save();
-    ctx.beginPath();
-    ctx.arc(b.x - r * 0.28, b.y - r * 0.28, r * 0.18, 0, Math.PI * 2);
-    ctx.fillStyle = '#ffffff22';
-    ctx.fill();
-    ctx.restore();
+    ctx.beginPath(); ctx.arc(b.x - r * .28, b.y - r * .28, r * .18, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff22'; ctx.fill(); ctx.restore();
 
     // Label
-    const fontSize = Math.max(10, Math.min(14, r * 0.38));
-    ctx.font = `600 ${fontSize}px SF Mono, Fira Code, monospace`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    const fs = Math.max(10, Math.min(14, r * .38));
+    ctx.font = `600 ${fs}px SF Mono, Fira Code, monospace`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillStyle = b.loaded ? '#e8fffe' : '#8888aa';
-    // Clip label inside circle
     ctx.save();
-    ctx.beginPath();
-    ctx.arc(b.x, b.y, r - 4, 0, Math.PI * 2);
-    ctx.clip();
+    ctx.beginPath(); ctx.arc(b.x, b.y, r - 4, 0, Math.PI * 2); ctx.clip();
     ctx.fillText(b.name, b.x, b.y);
     ctx.restore();
 
-    // Usage count badge
+    // Usage badge
     if (b.usage_count > 0) {
-      const bx = b.x + r * 0.65, by = b.y - r * 0.65;
-      ctx.beginPath();
-      ctx.arc(bx, by, 9, 0, Math.PI * 2);
-      ctx.fillStyle = '#7c6af7';
-      ctx.fill();
+      const bx = b.x + r * .65, by = b.y - r * .65;
+      ctx.beginPath(); ctx.arc(bx, by, 9, 0, Math.PI * 2);
+      ctx.fillStyle = '#7c6af7'; ctx.fill();
       ctx.font = 'bold 8px monospace';
-      ctx.fillStyle = '#fff';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(b.usage_count > 99 ? '99+' : String(b.usage_count), bx, by);
     }
   }
 }
 
-function loop() {
-  physics();
-  draw();
-  frame = requestAnimationFrame(loop);
-}
+function loop() { physics(); draw(); requestAnimationFrame(loop); }
 
 // ── Tooltip ───────────────────────────────────────────────────────────────────
-
 canvas.addEventListener('mousemove', e => {
-  const rect = canvas.getBoundingClientRect();
-  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const r = canvas.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
   hovered = bubbles.find(b => Math.hypot(b.x - mx, b.y - my) < b.r) || null;
-
   if (hovered) {
     const b = hovered;
     const tags = (b.tags || []).map(t => `<span class="t-tag">${t}</span>`).join('') || '—';
@@ -442,44 +424,25 @@ canvas.addEventListener('mousemove', e => {
     canvas.style.cursor = 'default';
   }
 });
-
-canvas.addEventListener('mouseleave', () => {
-  hovered = null;
-  tooltip.classList.remove('show');
-});
+canvas.addEventListener('mouseleave', () => { hovered = null; tooltip.classList.remove('show'); });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-
-async function refresh() {
-  const data = await loadData();
-  updateStats(data);
-
-  // Preserve positions for existing bubbles
-  const existing = {};
-  for (const b of bubbles) existing[b.name] = b;
-
-  bubbles = data.map((d, i) => {
-    const prev = existing[d.name] || {};
-    return {
-      ...d,
-      r: d.radius || 40,
-      x: prev.x,
-      y: prev.y,
-      vx: prev.vx || (Math.random() - .5) * 2,
-      vy: prev.vy || (Math.random() - .5) * 2,
-      _phase: prev._phase ?? (i * 1.3),
-    };
-  });
-
-  layout();
-}
-
 (async () => {
   resize();
-  await refresh();
+  const { skills, exported_at } = await loadData();
+  updateStats(skills, exported_at);
+
+  const maxUsage = Math.max(...skills.map(s => s.usage_count || 0), 0);
+  bubbles = skills.map((d, i) => ({
+    ...d,
+    usage_count: d.usage_count || 0,
+    tags: d.tags || [],
+    r: calcRadius(d.usage_count || 0, maxUsage),
+    _phase: i * 1.3,
+  }));
+
+  initPositions();
   loop();
-  // Auto-refresh every 5s
-  setInterval(refresh, 5000);
 })();
 </script>
 </body>

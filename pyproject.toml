@@ -1,13 +1,13 @@
 [build-system]
-requires = ["setuptools>=59", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "skill-bubble"
 version = "0.1.0"
 description = "A visual skill manager for AI agents — usage makes bubbles grow"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 license = { text = "MIT" }
 dependencies = [
     "click>=8.1",
