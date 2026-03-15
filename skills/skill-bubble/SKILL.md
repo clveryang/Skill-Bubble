@@ -170,3 +170,11 @@ Learn https://raw.githubusercontent.com/clveryang/Skill-Bubble/main/skills/skill
 ```
 
 The agent fetches this file with WebFetch and immediately knows how to perform all skill management operations without installing anything.
+
+Once learned, the agent supports:
+- Browse available skills from the hub index
+- Install skills by fetching their SKILL.md and saving locally to ~/.skill-bubble/skills/
+- Load skills by injecting them into ~/.claude/CLAUDE.md within a managed block
+- View loaded skills via ~/.skill-bubble/loaded.json
+- Unload skills by removing them from the managed block and loaded.json
+- Upload skills to the hub via GitHub Contents API
