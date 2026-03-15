@@ -126,7 +126,38 @@ Requires a GitHub personal access token with `repo` scope set in `GITHUB_TOKEN` 
    ```
    If the file already exists, include `"sha": "{current_sha}"` in the body (get sha via GET on the same URL first).
 
-4. After upload, tell the user: "Run `sb export && git push` (or manually update `index.json`) so the new skill appears in hub discovery."
+4. Update index.json on GitHub:
+
+   a. GET https://api.github.com/repos/clveryang/Skill-Bubble/contents/index.json
+      Headers: Authorization: token {GITHUB_TOKEN}
+      → Extract `content` (base64) and `sha` from the response.
+
+   b. Decode content (base64 → UTF-8), parse as JSON. Append a new entry to the `skills` array:
+      ```json
+      {
+        "name": "{name}",
+        "description": "{one-line description}",
+        "tags": [...],
+        "path": "skills/{name}",
+        "usage_count": 0
+      }
+      ```
+      Also update the top-level `"updated_at"` field to the current UTC time in ISO 8601 format (e.g. `"2026-03-15T12:00:00Z"`).
+
+   c. Re-encode the updated JSON as base64 (UTF-8, no line breaks).
+
+   d. PUT https://api.github.com/repos/clveryang/Skill-Bubble/contents/index.json
+      Headers: Authorization: token {GITHUB_TOKEN}, Content-Type: application/json
+      Body:
+      ```json
+      {
+        "message": "feat: register {name}",
+        "content": "{base64_encoded_updated_json}",
+        "sha": "{sha_from_step_a}"
+      }
+      ```
+
+   After both PUTs succeed, confirm to the user that the skill is published and discoverable.
 
 ---
 
