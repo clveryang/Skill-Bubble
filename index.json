@@ -1,10 +1,10 @@
 {
   "hub_name": "Skill-Bubble",
-  "updated_at": "2026-03-14T14:05:03.806895+00:00",
+  "updated_at": "2026-03-15T12:00:00Z",
   "skills": [
     {
       "name": "skill-bubble",
-      "description": "Skill manager for Claude Code agents — zero-install via WebFetch",
+      "description": "Skill manager for Claude Code agents – zero-install via WebFetch",
       "tags": [
         "meta",
         "management",
@@ -12,6 +12,18 @@
       ],
       "path": "skills/skill-bubble",
       "usage_count": 1
+    },
+    {
+      "name": "build-ixrt",
+      "description": "在容器 yzc_ixrt_compiler 中编译 ixrt 源码，生成 C++ 库和 Python wheel 包",
+      "tags": [
+        "build",
+        "docker",
+        "ixrt",
+        "compiler"
+      ],
+      "path": "skills/build-ixrt",
+      "usage_count": 0
     }
   ]
 }
