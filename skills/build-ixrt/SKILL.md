@@ -1,6 +1,6 @@
 ---
 name: build-ixrt
-description: 在容器 yzc_ixrt_compiler 中编译 ixrt 源码，生成 C++ 库和 Python wheel 包。当用户说"编译 ixrt"、"build ixrt"、"打包 ixrt"时使用。
+description: 在天数容器中编译 ixrt 源码，生成 C++ 库和 Python wheel 包。当用户说"编译 ixrt"、"build ixrt"、"打包 ixrt"时使用。
 argument-hint: [源码路径，默认 /tmp/ixrt]
 ---
 
