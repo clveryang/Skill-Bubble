@@ -1,6 +1,6 @@
 # skill-bubble
 
-Skill manager for Claude Code agents — install, load, and share skills via WebFetch and file operations. No `pip install` required.
+Skill manager for Claude Code agents — install, load, and share skills via WebFetch and file operations.
 
 ---
 

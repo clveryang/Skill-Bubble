@@ -4,10 +4,11 @@
   "skills": [
     {
       "name": "skill-bubble",
-      "description": "Local skill manager REST API",
+      "description": "Skill manager for Claude Code agents — zero-install via WebFetch",
       "tags": [
         "meta",
-        "management"
+        "management",
+        "zero-install"
       ],
       "path": "skills/skill-bubble",
       "usage_count": 1
